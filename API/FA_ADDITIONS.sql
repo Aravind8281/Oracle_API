@@ -132,5 +132,5 @@ select * from fa_books
 select * from fa_category_books 
 
 select * from fa_locations
-
+ 
 select * from fa_deprn_summary
