@@ -120,7 +120,7 @@ BEGIN
    end if;
 
 end;
-
+.
 Select * from fa_additions_B
 
 select * from fa_categories_b
