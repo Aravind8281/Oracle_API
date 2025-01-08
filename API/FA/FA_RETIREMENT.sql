@@ -1,50 +1,17 @@
 DECLARE
-    lv_asset_number       VARCHAR2(100) DEFAULT '117279';
-    lv_book_type_code     VARCHAR2(15) DEFAULT 'ACTION QAT FA';
-    ln_asset_id           NUMBER;
-    ln_user_id            NUMBER :=-1;
-    ln_cost_retired       NUMBER;
-    ln_proceeds_of_sale   NUMBER := 0;
-    ln_cost_of_removal    NUMBER := 0;
-    ln_request_id         NUMBER;
-    lr_trans_rec          fa_api_types.trans_rec_type;
-    lr_dist_trans_rec     fa_api_types.trans_rec_type;
-    lr_asset_hdr_rec      fa_api_types.asset_hdr_rec_type;
-    lr_asset_retire_rec   fa_api_types.asset_retire_rec_type;
-    lt_asset_dist_tbl     fa_api_types.asset_dist_tbl_type;
-    lt_subcomp_tbl        fa_api_types.subcomp_tbl_type;
-    lt_inv_tbl            fa_api_types.inv_tbl_type;
-    ln_api_version        NUMBER := 1;
-    lv_init_msg_list      VARCHAR2(1) := fnd_api.g_false;
-    lv_commit             VARCHAR2(1) := fnd_api.g_true;
-    lv_validation_level   NUMBER := fnd_api.g_valid_level_full;
-    lv_calling_func       VARCHAR2(80) := 'Shareoracleapps Wrapper';
-    lv_return_sts         VARCHAR2(1) := fnd_api.g_false;
-    ln_msg_cnt            NUMBER := 0;
-    lv_message            VARCHAR2(512);
-    ln_count              NUMBER;
-    i                     NUMBER := 0;
-    lv_dummy              VARCHAR2(512);
-    ln_message_count      NUMBER;
-    CURSOR cur_fa_addition IS
-        SELECT
-            a.asset_number,
-            a.asset_id,
-            b.cost
-        FROM
-            fa_additions_b a,
-            fa_books_v b
-        WHERE
-                a.asset_id = b.asset_id
-            AND
-                a.asset_number = lv_asset_number
-            AND
-                a.creation_date > SYSDATE - 300
-            AND
-                b.book_type_code = lv_book_type_code
-            AND
-                a.asset_number = '117279';
-
+    l_trans_rec          fa_api_types.trans_rec_type;
+    l_dist_trans_rec     fa_api_types.trans_rec_type;
+    l_asset_hdr_rec      fa_api_types.asset_hdr_rec_type;
+    l_asset_retire_rec   fa_api_types.asset_retire_rec_type;
+    l_asset_dist_tbl     fa_api_types.asset_dist_tbl_type;
+    l_subcomp_tbl        fa_api_types.subcomp_tbl_type;
+    l_inv_tbl            fa_api_types.inv_tbl_type;
+    ln_api_version       NUMBER := 1;
+    l_return_status      VARCHAR2(1);
+    ln_request_id        NUMBER;
+    l_mesg_count         NUMBER;
+    l_mesg               VARCHAR2(4000);
+    lv_calling_func      VARCHAR2(80) := 'Shareoracleapps Wrapper';
 BEGIN
     fnd_global.apps_initialize(
         user_id        =>-1,
@@ -52,128 +19,100 @@ BEGIN
         resp_appl_id   => 140
     );
 
-    FOR i IN cur_fa_addition LOOP
-        BEGIN
-            fa_srvr_msg.init_server_message;
-            fa_debug_pkg.set_debug_flag(
-                debug_flag   => 'YES'
-            );
-            dbms_output.put_line('Asset_id :' || i.asset_id);
-            ln_asset_id := i.asset_id;
-            ln_cost_retired := i.cost;
-            ln_request_id := fnd_global.conc_request_id;
-            fnd_profile.get(
-                'LOGIN_ID',
-                lr_trans_rec.who_info.last_update_login
-            );
-            fnd_profile.get(
-                'USER_ID',
-                lr_trans_rec.who_info.last_updated_by
-            );
-            IF
-                (
-                    lr_trans_rec.who_info.last_updated_by IS NULL
-                )
-            THEN
-                lr_trans_rec.who_info.last_updated_by :=-1;
-            END IF;
+    fa_srvr_msg.init_server_message;
+    fa_debug_pkg.set_debug_flag(
+        debug_flag   => 'YES'
+    );
+    ln_request_id := fnd_global.conc_request_id;
+    fnd_profile.get(
+        'LOGIN_ID',
+        l_trans_rec.who_info.last_update_login
+    );
+    fnd_profile.get(
+        'USER_ID',
+        l_trans_rec.who_info.last_updated_by
+    );
+    IF
+        (
+            l_trans_rec.who_info.last_updated_by IS NULL
+        )
+    THEN
+        l_trans_rec.who_info.last_updated_by :=-1;
+    END IF;
 
-            IF
-                (
-                    lr_trans_rec.who_info.last_update_login IS NULL
-                )
-            THEN
-                lr_trans_rec.who_info.last_update_login :=-1;
-            END IF;
+    IF
+        (
+            l_trans_rec.who_info.last_update_login IS NULL
+        )
+    THEN
+        l_trans_rec.who_info.last_update_login :=-1;
+    END IF;
 
-            lr_trans_rec.who_info.last_update_date := SYSDATE;
-            lr_trans_rec.who_info.creation_date := SYSDATE;
-            lr_trans_rec.who_info.created_by := lr_trans_rec.who_info.last_updated_by;
-            lr_asset_hdr_rec.asset_id := ln_asset_id;
-            lr_asset_hdr_rec.book_type_code := lv_book_type_code;
-            lr_trans_rec.transaction_type_code := NULL;
-            lr_trans_rec.transaction_date_entered := NULL;
-            lr_asset_hdr_rec.period_of_addition := NULL;
-            lr_asset_retire_rec.retirement_prorate_convention := NULL;
-            lr_asset_retire_rec.date_retired := NULL;
-            lr_asset_retire_rec.units_retired := NULL;
-            lr_asset_retire_rec.cost_retired := ln_cost_retired;
-            lr_asset_retire_rec.proceeds_of_sale := ln_proceeds_of_sale;
-            lr_asset_retire_rec.cost_of_removal := ln_cost_of_removal;
-            lr_asset_retire_rec.retirement_type_code := 'SALE';
-            lr_asset_retire_rec.trade_in_asset_id := NULL;
-            lr_asset_retire_rec.calculate_gain_loss := fnd_api.g_false;
-            fnd_profile.put(
-                'USER_ID',
-                ln_user_id
-            );
-            lt_asset_dist_tbl.DELETE;
-            dbms_output.put_line('Call API');
-            fa_retirement_pub.do_retirement(
-                p_api_version         => ln_api_version,
-                p_init_msg_list       => lv_init_msg_list,
-                p_commit              => lv_commit,
-                p_validation_level    => lv_validation_level,
-                p_calling_fn          => lv_calling_func,
-                x_return_status       => lv_return_sts,
-                x_msg_count           => ln_msg_cnt,
-                x_msg_data            => lv_message,
-                px_trans_rec          => lr_trans_rec,
-                px_dist_trans_rec     => lr_dist_trans_rec,
-                px_asset_hdr_rec      => lr_asset_hdr_rec,
-                px_asset_retire_rec   => lr_asset_retire_rec,
-                p_asset_dist_tbl      => lt_asset_dist_tbl,
-                p_subcomp_tbl         => lt_subcomp_tbl,
-                p_inv_tbl             => lt_inv_tbl
-            );
+    l_trans_rec.who_info.last_update_date := SYSDATE;
+    l_trans_rec.who_info.creation_date := SYSDATE;
+    l_trans_rec.who_info.created_by := l_trans_rec.who_info.last_updated_by;
+    l_asset_hdr_rec.asset_id := 117280;
+    l_asset_hdr_rec.book_type_code := 'ACTION QAT FA';
+    l_asset_retire_rec.cost_retired := 100;
+    l_asset_retire_rec.calculate_gain_loss := fnd_api.g_false;
+    fa_retirement_pub.do_retirement(
+        p_api_version         => ln_api_version,
+        p_init_msg_list       => fnd_api.g_false,
+        p_commit              => fnd_api.g_true,
+        p_validation_level    => fnd_api.g_valid_level_full,
+        p_calling_fn          => lv_calling_func,
+        x_return_status       => l_return_status,
+        x_msg_count           => l_mesg_count,
+        x_msg_data            => l_mesg,
+        px_trans_rec          => l_trans_rec,
+        px_dist_trans_rec     => l_dist_trans_rec,
+        px_asset_hdr_rec      => l_asset_hdr_rec,
+        px_asset_retire_rec   => l_asset_retire_rec,
+        p_asset_dist_tbl      => l_asset_dist_tbl,
+        p_subcomp_tbl         => l_subcomp_tbl,
+        p_inv_tbl             => l_inv_tbl
+    );
 
-            IF
-                lv_return_sts = fnd_api.g_false
-            THEN
-                dbms_output.put_line('lv_return_sts :' || lv_return_sts);
-            ELSE
-                dbms_output.put_line('lv_return_sts :' || lv_return_sts);
-            END IF;
+    l_mesg_count := fnd_msg_pub.count_msg;
+    IF
+        l_mesg_count > 0
+    THEN
+        l_mesg := chr(10)
+         || substr(
+            fnd_msg_pub.get(
+                fnd_msg_pub.g_first,
+                fnd_api.g_false
+            ),
+            1,
+            250
+        );
 
-            dbms_output.put_line('Asset Retirement Done: id: ' || lr_asset_retire_rec.retirement_id);
-            IF
-                ( fa_debug_pkg.print_debug )
-            THEN
-                fa_debug_pkg.write_debug_log;
-            END IF;
-            fa_srvr_msg.add_message(
-                calling_fn   => lv_calling_func,
-                name         => 'FA_SHARED_END_SUCCESS',
-                token1       => 'PROGRAM',
-                value1       => 'RETIREMENT_API'
-            );
-
-            ln_message_count := fnd_msg_pub.count_msg;
-            IF
-                ( ln_message_count > 0 )
-            THEN
-                lv_dummy := fnd_msg_pub.get(
-                    fnd_msg_pub.g_first,
+        dbms_output.put_line(l_mesg);
+        FOR i IN 1.. ( l_mesg_count - 1 ) LOOP
+            l_mesg := substr(
+                fnd_msg_pub.get(
+                    fnd_msg_pub.g_next,
                     fnd_api.g_false
-                );
-                dbms_output.put_line('dump: ' || lv_dummy);
-                FOR i IN 1.. ( ln_message_count - 1 ) LOOP
-                    lv_dummy := fnd_msg_pub.get(
-                        fnd_msg_pub.g_next,
-                        fnd_api.g_false
-                    );
-                    dbms_output.put_line('dump: ' || lv_dummy);
-                END LOOP;
+                ),
+                1,
+                250
+            );
 
-            ELSE
-                dbms_output.put_line('dump: NO MESSAGE !');
-            END IF;
+            dbms_output.put_line(l_mesg);
+        END LOOP;
 
-        EXCEPTION
-            WHEN OTHERS THEN
-                dbms_output.put_line('Error :' || sqlerrm);
-        END;
-    END LOOP;
+        fnd_msg_pub.delete_msg ();
+    END IF;
+
+    IF
+        ( l_return_status <> fnd_api.g_ret_sts_success )
+    THEN
+        dbms_output.put_line('FAILURE');
+    ELSE
+        dbms_output.put_line('SUCCESS');
+        dbms_output.put_line('RETIREMENT_ID' || TO_CHAR(l_asset_retire_rec.retirement_id) );
+        COMMIT;
+    END IF;
 
 EXCEPTION
     WHEN OTHERS THEN
